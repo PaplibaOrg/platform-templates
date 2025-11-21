@@ -86,6 +86,51 @@ product/rbac/main.bicep
             └── resources/iam-rg/main.bicep
 ```
 
+### Module Versioning
+
+Use **Git Tags + metadata.json** for version management:
+
+#### Semantic Versioning
+- **Major** (1.0.0 → 2.0.0): Breaking changes (parameter removed, scope changed)
+- **Minor** (1.0.0 → 1.1.0): New features, backward compatible (new optional parameter)
+- **Patch** (1.0.0 → 1.0.1): Bug fixes, no API changes
+
+#### Versioning Workflow
+
+1. **Update metadata.json** when making changes:
+   ```json
+   {
+     "name": "role-assignment",
+     "version": "1.1.0",
+     ...
+   }
+   ```
+
+2. **Create git tag** for releases:
+   ```bash
+   git tag <module-name>/v1.1.0
+   git push origin <module-name>/v1.1.0
+   ```
+
+3. **Tag naming convention**: `<module-name>/v<version>`
+   - Examples: `role-assignment/v1.0.0`, `iam-rg/v1.1.0`
+
+#### Version History
+- Git history serves as version history
+- No need to create version folders or file copies
+- Use `git log --oneline modules/resources/<module-name>/` to view changes
+
+#### Future: Azure Container Registry (ACR)
+For centralized module sharing, publish to ACR:
+```bash
+bicep publish main.bicep --target br:myregistry.azurecr.io/bicep/modules/<module-name>:<version>
+```
+
+Reference in Bicep:
+```bicep
+module example 'br:myregistry.azurecr.io/bicep/modules/role-assignment:1.0.0' = { }
+```
+
 ## Parameter Files Structure
 
 Parameter files follow the management group hierarchy:
