@@ -21,32 +21,70 @@ This document defines the standard folder structure for platform repositories us
 
 ## Modules Folder
 
-The `modules/` folder contains all Bicep templates organized by type:
+The `modules/` folder contains all Bicep templates organized by type. Each module has its own folder containing `main.bicep` and `metadata.json`:
 
 ```
 modules/
-├── product/     # Main deployment templates (entry points)
-├── services/    # Service-level modules (APIs, apps, etc.)
-└── resources/   # Resource-level modules (storage, VMs, etc.)
+├── product/           # Main deployment templates (entry points)
+│   └── <module-name>/
+│       ├── main.bicep
+│       └── metadata.json
+├── services/          # Service-level modules (APIs, apps, etc.)
+│   └── <module-name>/
+│       ├── main.bicep
+│       └── metadata.json
+└── resources/         # Resource-level modules (storage, VMs, etc.)
+    └── <module-name>/
+        ├── main.bicep
+        └── metadata.json
+```
+
+### Module Structure
+
+Each module folder must contain:
+- `main.bicep` - The Bicep template
+- `metadata.json` - Version and module information
+
+#### metadata.json Format
+```json
+{
+  "name": "<module-name>",
+  "version": "1.0.0",
+  "description": "Description of the module",
+  "scope": "subscription|resourceGroup",
+  "dependencies": [],
+  "parameters": ["param1", "param2"]
+}
 ```
 
 ### Module Types
 
 #### Product (`modules/product/`)
 - Main entry point Bicep files
-- Orchestrates services and resources
+- Orchestrates services modules
 - Called directly by pipelines
-- Example: `main.bicep` for IAM deployment
+- References modules in `services/`
+- Example: `modules/product/rbac/main.bicep`
 
 #### Services (`modules/services/`)
 - Service-specific modules
-- Combines multiple resources into a logical service
-- Examples: `api-management.bicep`, `web-app.bicep`
+- Combines multiple resource modules into a logical service
+- References modules in `resources/`
+- Example: `modules/services/iam-resources/main.bicep`
 
 #### Resources (`modules/resources/`)
 - Individual Azure resource modules
 - Reusable across services
-- Examples: `roleAssignment.bicep`, `managedIdentity.bicep`, `storageAccount.bicep`
+- Standalone modules (no dependencies)
+- Examples: `role-assignment/`, `managed-identity/`, `custom-role-definition/`
+
+### Module Hierarchy
+
+```
+product/rbac/main.bicep
+    └── services/iam-resources/main.bicep
+            └── resources/iam-rg/main.bicep
+```
 
 ## Parameter Files Structure
 
@@ -66,14 +104,16 @@ plb-root/                              # Root management group
 
 ### Parameter File Format
 ```bicep
-using '../../modules/product/main.bicep'
+using '../../modules/product/<module-name>/main.bicep'
 
 param environment = '<environment>'
+param application = '<application>'
+param region = '<region>'
+param sequence = '<sequence>'
 param location = '<location>'
-
 param tags = {
-  project: '<project-name>'
-  costCenter: '<cost-center>'
+  environment: '<environment>'
+  managedBy: 'bicep'
 }
 ```
 
@@ -239,7 +279,7 @@ When creating a new platform repository:
 
 3. **Always copy instruction files from platform-templates**
 
-4. **Main Bicep files go in `modules/product/`**
+4. **Each module must have its own folder with `main.bicep` and `metadata.json`**
 
 5. **Parameter file paths must match management group hierarchy**
 
@@ -259,9 +299,26 @@ azure-iam/
 │   └── REPOSITORY_STRUCTURE.md
 ├── modules/
 │   ├── product/
-│   │   └── main.bicep
+│   │   └── rbac/
+│   │       ├── main.bicep
+│   │       └── metadata.json
 │   ├── services/
+│   │   └── iam-resources/
+│   │       ├── main.bicep
+│   │       └── metadata.json
 │   └── resources/
+│       ├── iam-rg/
+│       │   ├── main.bicep
+│       │   └── metadata.json
+│       ├── role-assignment/
+│       │   ├── main.bicep
+│       │   └── metadata.json
+│       ├── managed-identity/
+│       │   ├── main.bicep
+│       │   └── metadata.json
+│       └── custom-role-definition/
+│           ├── main.bicep
+│           └── metadata.json
 ├── pipeline/
 │   └── azure-pipelines.yml
 ├── plb-root/
