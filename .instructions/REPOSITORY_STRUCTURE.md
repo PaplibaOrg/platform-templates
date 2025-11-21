@@ -48,14 +48,11 @@ Each module folder must contain:
 #### metadata.json Format
 ```json
 {
-  "name": "<module-name>",
-  "version": "1.0.0",
-  "description": "Description of the module",
-  "scope": "subscription|resourceGroup",
-  "dependencies": [],
-  "parameters": ["param1", "param2"]
+  "version": "1.0.0"
 }
 ```
+
+**Note**: Metadata files contain only version information. All other metadata (parameters, scope, description) is documented in the Bicep file itself using `@description` decorators and parameter definitions.
 
 ### Module Types
 
@@ -76,15 +73,159 @@ Each module folder must contain:
 - Individual Azure resource modules
 - Reusable across services
 - Standalone modules (no dependencies)
-- Examples: `role-assignment/`, `managed-identity/`, `custom-role-definition/`
+- Examples: `role-assignment/`, `managed-identity/`, `role-definition/`, `rg/`
 
 ### Module Hierarchy
 
 ```
 product/rbac/main.bicep
     └── services/iam-resources/main.bicep
-            └── resources/iam-rg/main.bicep
+            ├── resources/rg/main.bicep
+            ├── resources/role-definition/main.bicep
+            ├── resources/managed-identity/main.bicep
+            └── resources/role-assignment/main.bicep
 ```
+
+## IAM Architecture
+
+This repository implements a comprehensive Identity and Access Management (IAM) solution using three managed identities, three custom roles, and automatic role assignments.
+
+### Managed Identities
+
+**1. `iamRbacMI` - IAM/RBAC Deployment Identity**
+- **Purpose**: Deploys and manages all IAM resources
+- **Assigned Role**: IAM Deployment Operator (custom role)
+- **Permissions**:
+  - Role Assignments: `Microsoft.Authorization/roleAssignments/*`
+  - Role Definitions: `Microsoft.Authorization/roleDefinitions/*`
+  - Managed Identities: `Microsoft.ManagedIdentity/userAssignedIdentities/*`
+  - Deployment Stacks: `Microsoft.Resources/deploymentStacks/*`
+  - Resource Groups: `Microsoft.Resources/subscriptions/resourceGroups/*`
+  - Deployments: `Microsoft.Resources/deployments/*`
+  - Subscriptions Read: `Microsoft.Resources/subscriptions/read`
+
+**2. `mgCreateMI` - Management Group Identity**
+- **Purpose**: Manages management group operations and deployment stacks
+- **Assigned Roles**:
+  - MG Contributor with Deployment Stack (custom role)
+  - Additional roles via `mgRoleAssignments` array parameter
+- **Permissions** (via MG Contributor role):
+  - Management Groups: `Microsoft.Management/managementGroups/*`
+  - Deployment Stacks: `Microsoft.Resources/deploymentStacks/*`
+
+**3. `subVendingMI` - Subscription Vending Identity**
+- **Purpose**: Creates and manages subscriptions
+- **Assigned Roles**: Configured via `subVendingRoleAssignments` array parameter
+- **Expected Permissions** (via external role assignments):
+  - Subscription operations: `Microsoft.Subscription/subscriptions/*`
+  - Other permissions as needed
+
+### Custom Roles
+
+**1. IAM Deployment Operator**
+- **Assigned to**: `iamRbacMI`
+- **Purpose**: Complete control over IAM resource deployment
+- **Key Actions**: Role assignments, role definitions, managed identities, deployment stacks, resource groups
+- **Scope**: Subscription level
+
+**2. MG Contributor with Deployment Stack**
+- **Assigned to**: `mgCreateMI`
+- **Purpose**: Management group operations and deployment stack management
+- **Key Actions**: Management group operations, deployment stacks
+- **Scope**: Subscription level
+
+**3. Subscription Vending Operator**
+- **Assigned to**: None (available for external assignment)
+- **Purpose**: Subscription vending operations
+- **Key Actions**: Subscription creation and management
+- **Scope**: Subscription level
+
+### Role Assignment Pattern
+
+The architecture supports two types of role assignments:
+
+**1. Automatic Custom Role Assignments** (defined in service module)
+```bicep
+// Automatically assigns custom roles to MIs
+module mgContributorRoleAssignment = {
+  principalId: mgCreateMI.principalId
+  roleDefinitionId: mgContributorRole.roleDefinitionGuid
+}
+
+module iamDeploymentRoleAssignment = {
+  principalId: iamRbacMI.principalId
+  roleDefinitionId: iamDeploymentRole.roleDefinitionGuid
+}
+```
+
+**2. Parameterized External Role Assignments** (defined in parameter files)
+```bicep
+// Allows assignment of built-in or external roles via arrays
+param mgRoleAssignments = [
+  {
+    subscriptionId: '<subscription-id>'
+    roleDefinitionId: '5d58bcaf-24a5-4b20-bdb6-eed9f69fbe4c' // MG Contributor
+  }
+]
+
+param subVendingRoleAssignments = [
+  {
+    subscriptionId: '<subscription-id>'
+    roleDefinitionId: 'b24988ac-6180-42a0-ab88-20f7382dd24c' // Contributor
+  }
+]
+```
+
+### Deployment Flow
+
+1. **Bootstrap Phase** (using existing service principal/MI):
+   - Deploys resource group
+   - Creates three custom role definitions
+   - Creates three managed identities
+
+2. **Role Assignment Phase**:
+   - Assigns `iamDeploymentRole` to `iamRbacMI`
+   - Assigns `mgContributorRole` to `mgCreateMI`
+   - Assigns external roles from parameter arrays
+
+3. **Future Deployments** (using `iamRbacMI`):
+   - Use `iamRbacMI` service connection in pipelines
+   - This MI has full permissions to manage all IAM resources
+   - No need for highly privileged service principals
+
+### Parameter File Configuration
+
+Each environment requires these parameters:
+
+```bicep
+// Managed identity names
+param mgManagedIdentityName = 'mg-contributor'
+param subVendingManagedIdentityName = 'sub-vending'
+param iamRbacManagedIdentityName = 'iam-rbac'
+
+// External role assignments
+param mgRoleAssignments = [
+  {
+    subscriptionId: '<target-subscription-id>'
+    roleDefinitionId: '<built-in-role-definition-id>'
+  }
+]
+
+param subVendingRoleAssignments = [
+  {
+    subscriptionId: '<target-subscription-id>'
+    roleDefinitionId: '<built-in-role-definition-id>'
+  }
+]
+```
+
+### Security Considerations
+
+1. **Least Privilege**: Each MI has only the permissions needed for its specific purpose
+2. **Custom Roles**: Custom roles provide minimal required permissions vs. broad built-in roles
+3. **Separation of Duties**: Three distinct identities for three different operational areas
+4. **Automatic Assignment**: Role assignments are codified and versioned in Bicep
+5. **Deployment Stacks**: All resources managed via deployment stacks for consistency and drift detection
 
 ### Module Versioning
 
@@ -100,9 +241,7 @@ Use **Git Tags + metadata.json** for version management:
 1. **Update metadata.json** when making changes:
    ```json
    {
-     "name": "role-assignment",
-     "version": "1.1.0",
-     ...
+     "version": "1.1.0"
    }
    ```
 
@@ -113,7 +252,7 @@ Use **Git Tags + metadata.json** for version management:
    ```
 
 3. **Tag naming convention**: `<module-name>/v<version>`
-   - Examples: `role-assignment/v1.0.0`, `iam-rg/v1.1.0`
+   - Examples: `role-assignment/v1.0.0`, `rg/v1.1.0`, `role-definition/v1.0.0`
 
 #### Version History
 - Git history serves as version history
@@ -352,7 +491,7 @@ azure-iam/
 │   │       ├── main.bicep
 │   │       └── metadata.json
 │   └── resources/
-│       ├── iam-rg/
+│       ├── rg/
 │       │   ├── main.bicep
 │       │   └── metadata.json
 │       ├── role-assignment/
@@ -361,7 +500,7 @@ azure-iam/
 │       ├── managed-identity/
 │       │   ├── main.bicep
 │       │   └── metadata.json
-│       └── custom-role-definition/
+│       └── role-definition/
 │           ├── main.bicep
 │           └── metadata.json
 ├── pipeline/
