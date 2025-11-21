@@ -11,8 +11,9 @@ This repository contains instruction files that define how projects should be st
 ```
 platform-templates/
 ├── .instructions/
-│   ├── PIPELINE_INSTRUCTIONS.md    # Azure DevOps pipeline patterns
-│   └── COMMITLINT_INSTRUCTIONS.md  # Husky + commitlint setup
+│   ├── PIPELINE_INSTRUCTIONS.md      # Azure DevOps pipeline patterns
+│   ├── COMMITLINT_INSTRUCTIONS.md    # Husky + commitlint setup
+│   └── REPOSITORY_STRUCTURE.md       # Repo folder structure
 └── README.md
 ```
 
@@ -30,6 +31,14 @@ Defines commit message standards including:
 - Husky and commitlint setup
 - Conventional commit format
 - Required configuration files
+
+### Repository Structure Instructions
+Defines standard folder structure including:
+- `modules/` folder organization (product, services, resources)
+- `pipeline/` folder for Azure DevOps
+- `plb-root/` for parameter files (MG hierarchy)
+- Required config files (.gitignore, bicepconfig.json, etc.)
+- Step-by-step setup guide for new repos
 
 ## Usage
 
