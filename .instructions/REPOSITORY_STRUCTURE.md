@@ -1,4 +1,6 @@
-# Repository Structure Instructions
+# Repository Structure Instructions (Bicep IaC)
+
+> **Note:** This instruction file is specifically for **Bicep IaC repositories**. Other repository types (e.g., applications, Terraform, etc.) will have separate instruction files.
 
 This document defines the standard folder structure for platform repositories using Bicep IaC.
 
